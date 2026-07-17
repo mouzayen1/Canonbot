@@ -26,6 +26,18 @@ ALLOWED_RETAILERS = {
 
 MIN_POLL_INTERVAL_SECONDS = 30
 
+# Valid detection modes per listing.
+#   auto    - pick the best available: Best Buy API if key+sku, else browser for
+#             JS-heavy sites (Target/Best Buy), else plain HTTP.
+#   http    - fetch the page and read JSON-LD/meta/text (fast, no browser).
+#   api     - Best Buy Developer API (needs BESTBUY_API_KEY + a sku).
+#   browser - render the page in headless Chromium, then read it (for JS sites).
+VALID_MODES = {"auto", "http", "api", "browser"}
+
+# Retailer hosts we know render stock client-side, so plain HTTP often can't
+# read them. In `auto` mode these prefer the browser checker.
+JS_HEAVY_HOSTS = {"target.com", "bestbuy.com"}
+
 
 @dataclass
 class Settings:
@@ -43,6 +55,9 @@ class ProductTarget:
     url: str
     max_price: float
     retailer: str  # human-readable, resolved from the URL host
+    host: str  # bare host, e.g. "bestbuy.com"
+    sku: str | None = None  # Best Buy numeric SKU, enables the API checker
+    mode: str = "auto"
 
     @property
     def key(self) -> str:
@@ -55,14 +70,16 @@ class Config:
     targets: list[ProductTarget] = field(default_factory=list)
     webhook_url: str = ""
     mention: str = ""
+    bestbuy_api_key: str = ""
 
 
-def _retailer_for_url(url: str) -> str | None:
+def _retailer_for_url(url: str) -> tuple[str, str] | None:
+    """Return (retailer_label, bare_domain) if the URL is an authorized host."""
     host = (urlparse(url).hostname or "").lower()
     host = host[4:] if host.startswith("www.") else host
     for domain, label in ALLOWED_RETAILERS.items():
         if host == domain or host.endswith("." + domain):
-            return label
+            return label, domain
     return None
 
 
@@ -92,20 +109,45 @@ def load_config(path: str) -> Config:
         if not name or max_price is None:
             errors.append(f"Product entry missing 'name' or 'max_price': {product!r}")
             continue
-        for url in product.get("urls", []) or []:
-            retailer = _retailer_for_url(url)
-            if retailer is None:
+        for entry in product.get("urls", []) or []:
+            # An entry can be a plain URL string, or a dict with url/sku/mode.
+            if isinstance(entry, str):
+                url, sku, mode = entry, None, "auto"
+            elif isinstance(entry, dict):
+                url = entry.get("url", "")
+                sku = entry.get("sku")
+                sku = str(sku) if sku is not None else None
+                mode = str(entry.get("mode", "auto")).lower()
+            else:
+                errors.append(f"Unrecognized listing entry: {entry!r}")
+                continue
+
+            if mode not in VALID_MODES:
+                errors.append(f"Invalid mode '{mode}' for {url} (use {VALID_MODES})")
+                continue
+
+            resolved = _retailer_for_url(url)
+            if resolved is None:
                 errors.append(
                     f"Refusing to monitor non-authorized retailer URL "
                     f"(not in the allowed list): {url}"
                 )
                 continue
+            retailer, host = resolved
+
+            if mode == "api" and host != "bestbuy.com":
+                errors.append(f"mode 'api' is Best Buy-only, but {url} is {retailer}")
+                continue
+
             targets.append(
                 ProductTarget(
                     product_name=name,
                     url=url,
                     max_price=float(max_price),
                     retailer=retailer,
+                    host=host,
+                    sku=sku,
+                    mode=mode,
                 )
             )
 
@@ -127,4 +169,5 @@ def load_config(path: str) -> Config:
         targets=targets,
         webhook_url=webhook_url,
         mention=os.environ.get("DISCORD_MENTION", "").strip(),
+        bestbuy_api_key=os.environ.get("BESTBUY_API_KEY", "").strip(),
     )

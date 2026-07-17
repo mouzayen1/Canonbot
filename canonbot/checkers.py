@@ -14,7 +14,9 @@ treats that as out of stock (so it never fires a false in-stock alert).
 
 from __future__ import annotations
 
+import glob
 import json
+import os
 import re
 from dataclasses import dataclass
 
@@ -167,8 +169,22 @@ def _from_text(soup: BeautifulSoup) -> StockResult:
     return StockResult(UNKNOWN, price, None, "ambiguous page text")
 
 
+def _analyze_html(html: str) -> StockResult:
+    """Run the JSON-LD -> meta -> text detection ladder over rendered HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    result = _from_json_ld(soup)
+    if result is not None:
+        if result.price is None:
+            result.price = _from_meta(soup)
+        result.http_status = 200
+        return result
+    result = _from_text(soup)
+    result.http_status = 200
+    return result
+
+
 def check_product(session: requests.Session, url: str, timeout: int) -> StockResult:
-    """Fetch a product page and determine stock + price."""
+    """Fetch a product page over plain HTTP and determine stock + price."""
     try:
         resp = session.get(url, timeout=timeout)
     except requests.RequestException as exc:
@@ -181,15 +197,124 @@ def check_product(session: requests.Session, url: str, timeout: int) -> StockRes
             UNKNOWN, None, None, f"HTTP {resp.status_code}", resp.status_code
         )
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    return _analyze_html(resp.text)
 
-    result = _from_json_ld(soup)
-    if result is not None:
-        if result.price is None:
-            result.price = _from_meta(soup)
-        result.http_status = 200
-        return result
 
-    result = _from_text(soup)
-    result.http_status = 200
+# --------------------------------------------------------------------------
+# Best Buy Developer API checker
+# Get a free key at https://developer.bestbuy.com/ and put it in BESTBUY_API_KEY.
+# --------------------------------------------------------------------------
+def check_via_bestbuy_api(sku: str, api_key: str, timeout: int) -> StockResult:
+    url = f"https://api.bestbuy.com/v1/products/{sku}.json"
+    params = {
+        "apiKey": api_key,
+        "show": "sku,name,salePrice,regularPrice,onlineAvailability,orderable",
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=timeout)
+    except requests.RequestException as exc:
+        return StockResult(UNKNOWN, None, None, f"Best Buy API error: {exc}", None)
+
+    if resp.status_code == 403:
+        return StockResult(UNKNOWN, None, None, "Best Buy API: bad/again-limited key", 403)
+    if resp.status_code != 200:
+        return StockResult(UNKNOWN, None, None, f"Best Buy API HTTP {resp.status_code}", resp.status_code)
+
+    try:
+        data = resp.json()
+    except ValueError:
+        return StockResult(UNKNOWN, None, None, "Best Buy API: unparseable JSON", 200)
+
+    price = data.get("salePrice") or data.get("regularPrice")
+    price = float(price) if price is not None else None
+    # `orderable` is the authoritative "can I buy it right now" flag; values
+    # include "Available", "SoldOut", "ComingSoon", "BackOrder".
+    orderable = str(data.get("orderable", "")).lower()
+    online = data.get("onlineAvailability")
+    if orderable == "available" or online is True:
+        status = IN_STOCK
+    elif orderable in ("soldout", "comingsoon", "backorder") or online is False:
+        status = OUT_OF_STOCK
+    else:
+        status = UNKNOWN
+    return StockResult(status, price, "USD", f"Best Buy API orderable={orderable or 'n/a'}", 200)
+
+
+# --------------------------------------------------------------------------
+# Headless-browser checker for JavaScript-rendered pages (Target, Best Buy).
+# Requires `pip install playwright`. Chromium is auto-detected.
+# --------------------------------------------------------------------------
+def _find_chromium() -> str | None:
+    """Locate a Chromium binary without requiring `playwright install`."""
+    explicit = os.environ.get("CANONBOT_CHROMIUM")
+    if explicit and os.path.exists(explicit):
+        return explicit
+    for pattern in (
+        "/opt/pw-browsers/chromium-*/chrome-linux/chrome",
+        "/opt/pw-browsers/chromium-*/chrome-linux/headless_shell",
+    ):
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            return matches[-1]
+    return None  # fall back to Playwright's own managed download
+
+
+def check_via_browser(url: str, timeout: int) -> StockResult:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return StockResult(
+            UNKNOWN, None, None,
+            "browser mode needs Playwright: pip install playwright", None,
+        )
+
+    exe = _find_chromium()
+    launch_kwargs = {"headless": True, "args": ["--no-sandbox"]}
+    if exe:
+        launch_kwargs["executable_path"] = exe
+    # Chromium doesn't inherit HTTPS_PROXY the way requests does; pass it through
+    # so the browser works behind a corporate/dev proxy too.
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if proxy:
+        launch_kwargs["proxy"] = {"server": proxy}
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(**launch_kwargs)
+            try:
+                page = browser.new_page(user_agent=_BROWSER_HEADERS["User-Agent"])
+                page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
+                # Give client-side price/stock a moment to hydrate.
+                page.wait_for_timeout(2500)
+                html = page.content()
+            finally:
+                browser.close()
+    except Exception as exc:  # noqa: BLE001 - launch/nav failures shouldn't crash the loop
+        return StockResult(UNKNOWN, None, None, f"browser error: {exc}", None)
+
+    result = _analyze_html(html)
+    result.detail = f"browser-rendered; {result.detail}"
     return result
+
+
+# --------------------------------------------------------------------------
+# Dispatcher: pick the right checker for a target.
+# --------------------------------------------------------------------------
+def check_target(session, target, timeout: int, bestbuy_api_key: str = "") -> StockResult:
+    """Route a target to the best checker based on its mode and available creds."""
+    mode = target.mode
+    host = target.host
+    can_use_api = bool(bestbuy_api_key) and bool(target.sku) and host == "bestbuy.com"
+
+    if mode == "api" or (mode == "auto" and can_use_api):
+        if not can_use_api:
+            return StockResult(
+                UNKNOWN, None, None,
+                "api mode needs BESTBUY_API_KEY and a sku in config", None,
+            )
+        return check_via_bestbuy_api(target.sku, bestbuy_api_key, timeout)
+
+    if mode == "browser" or (mode == "auto" and host in {"target.com", "bestbuy.com"}):
+        return check_via_browser(target.url, timeout)
+
+    return check_product(session, target.url, timeout)

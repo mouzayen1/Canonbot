@@ -105,8 +105,11 @@ class Monitor:
         for target in self.config.targets:
             if not self._running:
                 break
-            result = checkers.check_product(
-                self.session, target.url, settings.request_timeout_seconds
+            result = checkers.check_target(
+                self.session,
+                target,
+                settings.request_timeout_seconds,
+                self.config.bestbuy_api_key,
             )
             self._handle_result(target, result)
             # Small jittered gap between individual requests within a sweep so we

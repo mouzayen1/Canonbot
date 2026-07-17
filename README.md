@@ -85,20 +85,34 @@ For each product URL, in order of reliability:
 If a page won't load or is ambiguous, it's reported as **unknown** and treated as
 out of stock, so you never get a false "in stock!" ping.
 
-### Retailer reliability (be aware)
+### Detection modes (per listing)
 
-Because the bot refuses to evade bot-protection, results vary by site:
+Set `mode` on any listing in `config.yaml`:
 
-- ✅ **Reliable**: retailers that render product/price server-side with JSON-LD.
-- ⚠️ **Flaky**: **Canon USA** often returns HTTP 403 to simple requests, and
-  **Best Buy** / **Target** are JavaScript apps that may not expose stock to a
-  plain fetch. For these you'll see `unknown`/`HTTP 403` in the logs — that's the
-  bot backing off, not a bug.
+| Mode | What it does | Best for |
+|---|---|---|
+| `auto` *(default)* | Best Buy API if you gave a key+sku, else headless browser for Target/Best Buy, else plain HTTP | just leave it on auto |
+| `http` | Fast page fetch, reads JSON-LD/meta/text | Canon USA, B&H, Walmart |
+| `api` | Official **Best Buy Developer API** (needs key + sku) | Best Buy — most reliable |
+| `browser` | Renders the page in headless Chromium first | Target and other JS apps |
 
-If you want rock-solid coverage on those specific sites, the clean (non-evasive)
-upgrades are: use **Best Buy's official Developer API** (free key) for Best Buy,
-and add an optional headless-browser checker for JS-rendered pages. Both are
-easy to bolt on to `canonbot/checkers.py` — ask and I'll add them.
+**Best Buy API (recommended for Best Buy):** grab a free key at
+<https://developer.bestbuy.com/>, put it in `.env` as `BESTBUY_API_KEY`, and add
+the numeric `sku` to each Best Buy listing (shown on the product page as
+"SKU: 6377340"). This reads real-time price + `orderable` status straight from
+Best Buy — no scraping, no bot-protection issues.
+
+**Browser mode (for Target):** install it once with
+`pip install playwright && playwright install chromium`. Then set `mode: browser`
+on JS-rendered listings. It respects your `HTTPS_PROXY` and auto-detects Chromium;
+override with `CANONBOT_CHROMIUM` if needed.
+
+### Why some fetches say `unknown`
+
+Because the bot refuses to evade bot-protection, a site can still refuse a
+request (e.g. **Canon USA** sometimes returns HTTP 403). When that happens you'll
+see `unknown` in the logs and it's treated as out of stock — that's the bot
+failing safe, never a false "in stock!" ping.
 
 ## Running 24/7
 

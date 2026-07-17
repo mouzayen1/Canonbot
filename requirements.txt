@@ -2,3 +2,7 @@ requests>=2.31
 PyYAML>=6.0
 beautifulsoup4>=4.12
 python-dotenv>=1.0
+
+# Optional — only needed for `mode: browser` (JS-rendered sites like Target).
+# Install with: pip install playwright && playwright install chromium
+playwright>=1.40

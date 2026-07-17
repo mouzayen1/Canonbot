@@ -81,6 +81,44 @@ def test_text_ambiguous_is_unknown():
     assert r.status == checkers.UNKNOWN
 
 
+class _FakeResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def test_bestbuy_api_available(monkeypatch=None):
+    import canonbot.checkers as c
+
+    orig = c.requests.get
+    c.requests.get = lambda *a, **k: _FakeResp(
+        200, {"salePrice": 879.99, "orderable": "Available", "onlineAvailability": True}
+    )
+    try:
+        r = c.check_via_bestbuy_api("6377340", "key", 10)
+        assert r.status == c.IN_STOCK
+        assert r.price == 879.99
+    finally:
+        c.requests.get = orig
+
+
+def test_bestbuy_api_soldout():
+    import canonbot.checkers as c
+
+    orig = c.requests.get
+    c.requests.get = lambda *a, **k: _FakeResp(
+        200, {"regularPrice": 879.99, "orderable": "SoldOut", "onlineAvailability": False}
+    )
+    try:
+        r = c.check_via_bestbuy_api("6377340", "key", 10)
+        assert r.status == c.OUT_OF_STOCK
+    finally:
+        c.requests.get = orig
+
+
 def test_price_parser():
     assert checkers._parse_price("$1,299.00") == 1299.00
     assert checkers._parse_price("879.99") == 879.99

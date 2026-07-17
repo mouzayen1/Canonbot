@@ -30,19 +30,35 @@ settings:
 # The items you're watching. Add or remove freely.
 # `max_price` is YOUR ceiling for that item (typically MSRP).
 products:
+  # A listing can be a plain URL (uses `auto` mode), OR an object with:
+  #   url:  the product page (required)
+  #   sku:  Best Buy numeric SKU (optional) — enables the official Best Buy API
+  #         when BESTBUY_API_KEY is set. Find it on the product page under
+  #         "SKU: 6377340", or in the URL of older Best Buy links.
+  #   mode: auto (default) | http | api | browser
+  #         auto    -> Best Buy API if key+sku, else headless browser for
+  #                    JS-heavy sites (Target/Best Buy), else plain HTTP.
+  #         http    -> fast page fetch, JSON-LD/text (best for Canon/B&H/Walmart).
+  #         api     -> Best Buy Developer API (needs key + sku).
+  #         browser -> render in headless Chromium (needs `pip install playwright`).
   - name: "Canon PowerShot G7 X Mark III (Black)"
     max_price: 879.99
     urls:
       - https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
-      - https://www.bestbuy.com/product/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/J7C86S93T6
-      - https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
+      - url: https://www.bestbuy.com/product/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/J7C86S93T6
+        sku: "6377340"   # <-- replace with the real SKU shown on the page
+        mode: auto
+      - url: https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
+        mode: browser
       # Add your B&H product URL here once you have it, e.g.:
       # - https://www.bhphotovideo.com/c/product/XXXXXX-REG/canon_powershot_g7_x_mark_iii.html
 
   - name: "Canon PowerShot SX740 HS (Black)"
     max_price: 399.99
     urls:
-      - https://www.bestbuy.com/product/canon-powershot-sx740-hs-20-3-megapixel-digital-camera-black/J7C86SSQCY
+      - url: https://www.bestbuy.com/product/canon-powershot-sx740-hs-20-3-megapixel-digital-camera-black/J7C86SSQCY
+        sku: "6377341"   # <-- replace with the real SKU shown on the page
+        mode: auto
       - https://www.walmart.com/ip/Canon-PowerShot-SX740-HS-4x-20-3-Megapixel-CMOS-Digital-Camera-New-Black/605041208
       # Canon sells this refurbished; add that URL if a refurb at your price is acceptable:
       # - https://www.usa.canon.com/shop/p/refurbished-powershot-sx740-hs-black
