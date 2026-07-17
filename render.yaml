@@ -1,19 +1,26 @@
 # Deploy Canonbot as an always-on Render worker (same style as Trend Radar).
-# The worker runs run.py continuously; state.json persists on the worker disk
-# so you won't get re-alerted for an item that stays in stock.
-# config.yaml is committed to the repo, so the worker has your watch list.
-# Set DISCORD_WEBHOOK_URL (and optionally BESTBUY_API_KEY) in the dashboard.
+# Canon + Target are read via plain JSON APIs (no browser), so this uses Render's
+# native Python runtime — no Docker needed. config.yaml is committed, so the
+# worker has your watch list. Set DISCORD_WEBHOOK_URL in the dashboard.
+#
+# NOTE: Render Background Workers are a paid instance type (~$7/mo). There is no
+# free worker tier. For a free option, run `python run.py` on a computer you
+# leave on, or use the GitHub Actions workflow (slower, ~hourly).
 services:
   - type: worker
     name: canonbot
-    runtime: docker           # Docker so headless-browser mode (Target) works
-    dockerfilePath: ./Dockerfile
+    runtime: python
+    plan: starter            # workers have no free plan; starter is ~$7/mo
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -u run.py
     envVars:
       - key: DISCORD_WEBHOOK_URL
         sync: false
       - key: DISCORD_MENTION
         sync: false
       - key: BESTBUY_API_KEY
+        sync: false
+      - key: TARGET_API_KEY
         sync: false
       - key: DISCORD_USERNAME
         sync: false
