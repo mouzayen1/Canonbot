@@ -1,0 +1,16 @@
+# Secrets / local config
+.env
+config.yaml
+
+# Runtime state
+state.json
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
