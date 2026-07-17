@@ -63,56 +63,69 @@ Everything lives in `config.yaml`:
 - **`products[].max_price`** — your ceiling for that item. Alerts fire only when
   the detected price is at or below this (that's the "never over MSRP" rule).
 - **`products[].urls`** — the exact product pages to watch. Add your B&H links etc.
-- **`settings.poll_interval_seconds`** — seconds between sweeps (min 30, default
-  90). Each request gets random jitter so the cadence isn't robotic. **Please
-  don't lower this a lot** — aggressive polling gets your IP rate-limited and is
-  rude to the retailer. 60–120s is plenty for a restock you'll act on manually.
+- **`settings.poll_interval_seconds`** — seconds between checks for a normal
+  listing (min 30, default 90). Jitter is added so the cadence isn't robotic.
+- **`settings.priority_poll_interval_seconds`** — faster cadence (default 45s)
+  for listings marked `priority: true` — e.g. Canon and Target.
+- **`settings.max_backoff_seconds`**, **`heartbeat_hours`**,
+  **`degraded_alert_after_minutes`** — see "24/7 reliability" below.
 - **`settings.alert_above_max_price`** — set `true` if you also want a
   (clearly-flagged) heads-up when an item is in stock but over your cap.
 
 Secrets go in `.env` (never committed):
 - **`DISCORD_WEBHOOK_URL`** — required.
 - **`DISCORD_MENTION`** — optional, e.g. `@everyone` or `<@&ROLE_ID>` to get pinged.
+- **`BESTBUY_API_KEY`** — optional, only for Best Buy listings.
+- **`TARGET_API_KEY`** — optional; a stable default is built in.
 
 ## How stock detection works
 
-For each product URL, in order of reliability:
-1. **schema.org JSON-LD** — structured `Product`/`Offer` data the site publishes
-   for search engines. Most reliable, gives both availability and price.
-2. **Open Graph / meta price tags** — for the price when JSON-LD lacks it.
-3. **Conservative text heuristics** ("Add to Cart" vs "Sold Out") — last resort.
+Each retailer is read the most reliable, non-evasive way — the same public data
+its own product page uses. In `auto` mode the right method is picked per site:
 
-If a page won't load or is ambiguous, it's reported as **unknown** and treated as
-out of stock, so you never get a false "in stock!" ping.
+| Retailer | How it's read | Browser needed? |
+|---|---|---|
+| **Target** | Public **RedSky** fulfillment JSON API (the API target.com's own pages call) | No |
+| **Canon USA** | Canon's **Magento GraphQL** backend (`cusa-prod.usa.canon.com/graphql`) | No |
+| **Best Buy** | Official **Best Buy Developer API** if you set a key + `sku`, else headless browser | Only as fallback |
+| **B&H / Walmart / other** | schema.org JSON-LD → meta tags → text heuristics | No |
+
+Both of the priority sites — Canon and Target — are read via plain JSON API
+calls, so they're fast, reliable, and work everywhere (including free CI runners,
+no browser required).
+
+**Why not just scrape the pages?** Target renders stock client-side, and Canon's
+storefront sits behind Akamai + a Queue-It waiting room that 403s plain requests
+(and can even trap a headless browser). Their *backends* — the same ones the site
+itself reads — return clean JSON to a normal request. That's what Canonbot uses.
+
+If a read is ever ambiguous or refused, it's reported as **unknown** and treated
+as out of stock, so you never get a false "in stock!" ping.
 
 ### Detection modes (per listing)
 
-Set `mode` on any listing in `config.yaml`:
+Leave `mode: auto` (recommended) and the table above applies. You can override:
+`http` (plain page fetch / API), `api` (Best Buy Developer API, needs key + sku),
+or `browser` (force headless Chromium — needs `pip install playwright &&
+playwright install chromium`).
 
-| Mode | What it does | Best for |
-|---|---|---|
-| `auto` *(default)* | Best Buy API if you gave a key+sku, else headless browser for Target/Best Buy, else plain HTTP | just leave it on auto |
-| `http` | Fast page fetch, reads JSON-LD/meta/text | Canon USA, B&H, Walmart |
-| `api` | Official **Best Buy Developer API** (needs key + sku) | Best Buy — most reliable |
-| `browser` | Renders the page in headless Chromium first | Target and other JS apps |
+## 24/7 reliability
 
-**Best Buy API (recommended for Best Buy):** grab a free key at
-<https://developer.bestbuy.com/>, put it in `.env` as `BESTBUY_API_KEY`, and add
-the numeric `sku` to each Best Buy listing (shown on the product page as
-"SKU: 6377340"). This reads real-time price + `orderable` status straight from
-Best Buy — no scraping, no bot-protection issues.
+Built to run unattended and stay honest about its own health:
 
-**Browser mode (for Target):** install it once with
-`pip install playwright && playwright install chromium`. Then set `mode: browser`
-on JS-rendered listings. It respects your `HTTPS_PROXY` and auto-detects Chromium;
-override with `CANONBOT_CHROMIUM` if needed.
-
-### Why some fetches say `unknown`
-
-Because the bot refuses to evade bot-protection, a site can still refuse a
-request (e.g. **Canon USA** sometimes returns HTTP 403). When that happens you'll
-see `unknown` in the logs and it's treated as out of stock — that's the bot
-failing safe, never a false "in stock!" ping.
+- **Independent per-listing scheduling** — each listing has its own timer, so a
+  slow or blocked retailer never holds up the others, and `priority: true`
+  listings (Canon, Target) are checked on the faster interval.
+- **Exponential backoff** — if a retailer starts blocking or timing out, *that*
+  listing backs off (up to `max_backoff_seconds`) instead of hammering it; the
+  rest keep scanning. It recovers automatically.
+- **Heartbeat** — every `heartbeat_hours` (default 12) it posts a Discord "still
+  watching" summary so you know it's alive. Set to 0 to disable.
+- **Degraded alert** — if a listing can't get a clean read for
+  `degraded_alert_after_minutes` (e.g. Target's key rotated), it warns you once
+  on Discord, then posts a recovery notice when it's readable again.
+- **State persistence** — `state.json` remembers what was in stock, so a restart
+  never re-spams you.
 
 ## Discord alert style
 

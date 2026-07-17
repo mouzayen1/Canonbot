@@ -6,59 +6,71 @@
 #   - Set `max_price` to the MSRP you refuse to go over. Alerts fire only when
 #     the detected price is at or below max_price (see alert_above_max_price).
 
-# How the monitor behaves globally.
+# How the monitor behaves globally. Each listing is scheduled independently, so
+# priority listings can be checked more often than the rest, and one slow/blocked
+# retailer never holds up the others.
 settings:
-  # Seconds between full sweeps of every product below. A random jitter of up to
-  # +50% is added to each request so the traffic looks human and stays polite.
-  # Minimum enforced floor is 30s — going lower gets you rate-limited/blocked and
-  # is rude to the retailer. 60-120s is a good, respectful default.
+  # Seconds between checks for a normal listing (min 30). Jitter is added so the
+  # cadence isn't robotic. 60-120s is respectful; going very low gets you blocked.
   poll_interval_seconds: 90
+
+  # Faster cadence for listings marked `priority: true` (e.g. Canon + Target).
+  priority_poll_interval_seconds: 45
 
   # Per-request timeout in seconds.
   request_timeout_seconds: 20
 
+  # If a retailer blocks/times out, THAT listing backs off exponentially up to
+  # this cap (seconds) instead of hammering it. Everything else keeps scanning.
+  max_backoff_seconds: 900
+
+  # Send a Discord "still watching" heartbeat this often (hours; 0 = disabled).
+  heartbeat_hours: 12
+
+  # If a listing can't get a clean stock read for this long, warn once on Discord
+  # (e.g. Target key rotated, or Canon backend down) — so silent failure is visible.
+  degraded_alert_after_minutes: 60
+
   # If true, you also get an alert when an item is in stock but ABOVE your
-  # max_price (clearly flagged as over-budget). If false (default), over-MSRP
-  # restocks are logged but not pushed to Discord — you only hear about it at
+  # max_price (clearly flagged). If false (default), you only hear about it at
   # your price or better.
   alert_above_max_price: false
 
-  # If a page loads but we can't confidently read stock status, treat it as
-  # out of stock (never sends a false "in stock!" ping).
+  # If we can't confidently read stock, treat it as out of stock (never a false ping).
   treat_unknown_as_out_of_stock: true
 
 # The items you're watching. Add or remove freely.
 # `max_price` is YOUR ceiling for that item (typically MSRP).
 products:
   # A listing can be a plain URL (uses `auto` mode), OR an object with:
-  #   url:  the product page (required)
-  #   sku:  Best Buy numeric SKU (optional) — enables the official Best Buy API
-  #         when BESTBUY_API_KEY is set. Find it on the product page under
-  #         "SKU: 6377340", or in the URL of older Best Buy links.
-  #   mode: auto (default) | http | api | browser
-  #         auto    -> Best Buy API if key+sku, else headless browser for
-  #                    JS-heavy sites (Target/Best Buy), else plain HTTP.
-  #         http    -> fast page fetch, JSON-LD/text (best for Canon/B&H/Walmart).
-  #         api     -> Best Buy Developer API (needs key + sku).
-  #         browser -> render in headless Chromium (needs `pip install playwright`).
+  #   url:      the product page (required)
+  #   priority: true -> use the faster priority_poll_interval
+  #   sku:      Best Buy numeric SKU (optional) — enables the official Best Buy
+  #             API when BESTBUY_API_KEY is set (find it under "SKU: ..." on the page).
+  #   mode:     auto (default) | http | api | browser
+  #
+  # In `auto` (recommended), each retailer is read the best way automatically:
+  #   • Target      -> public RedSky JSON API   (fast, reliable, no browser)
+  #   • Canon USA   -> Canon Magento GraphQL API (fast, reliable, no browser)
+  #   • Best Buy    -> official API if key+sku, else headless browser
+  #   • other sites -> plain HTTP (JSON-LD/text)
+  # `browser` forces headless Chromium (needs `pip install playwright`).
   - name: "Canon PowerShot G7 X Mark III (Black)"
     max_price: 879.99
     urls:
-      - https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
-      - url: https://www.bestbuy.com/product/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/J7C86S93T6
-        sku: "6377340"   # <-- replace with the real SKU shown on the page
-        mode: auto
       - url: https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
-        mode: browser
-      # Add your B&H product URL here once you have it, e.g.:
+        priority: true
+      - url: https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
+        priority: true
+      # Optional extra retailers:
+      # - url: https://www.bestbuy.com/product/.../J7C86S93T6
+      #   sku: "6377340"        # real SKU from the page; needs BESTBUY_API_KEY
       # - https://www.bhphotovideo.com/c/product/XXXXXX-REG/canon_powershot_g7_x_mark_iii.html
 
-  - name: "Canon PowerShot SX740 HS (Black)"
+  # Canon lists the SX740 HS refurbished only (~$439.99). Raise max_price if a
+  # refurb at that price works for you; otherwise it won't alert.
+  - name: "Canon PowerShot SX740 HS (Refurbished, Black)"
     max_price: 399.99
     urls:
-      - url: https://www.bestbuy.com/product/canon-powershot-sx740-hs-20-3-megapixel-digital-camera-black/J7C86SSQCY
-        sku: "6377341"   # <-- replace with the real SKU shown on the page
-        mode: auto
-      - https://www.walmart.com/ip/Canon-PowerShot-SX740-HS-4x-20-3-Megapixel-CMOS-Digital-Camera-New-Black/605041208
-      # Canon sells this refurbished; add that URL if a refurb at your price is acceptable:
-      # - https://www.usa.canon.com/shop/p/refurbished-powershot-sx740-hs-black
+      - url: https://www.usa.canon.com/shop/p/refurbished-powershot-sx740-hs-black
+        priority: true

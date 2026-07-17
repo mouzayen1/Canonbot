@@ -119,6 +119,94 @@ def test_bestbuy_api_soldout():
         c.requests.get = orig
 
 
+def test_canon_url_key_extraction():
+    import canonbot.checkers as c
+    assert c.extract_canon_url_key("https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii") == "powershot-g7-x-mark-iii"
+    assert c.extract_canon_url_key("https://www.usa.canon.com/about") is None
+
+
+def test_target_tcin_extraction():
+    import canonbot.checkers as c
+    assert c.extract_tcin("https://www.target.com/p/foo/-/A-91467769") == "91467769"
+    assert c.extract_tcin("https://www.target.com/p/foo") is None
+
+
+class _PostResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def test_canon_graphql_matches_exact_url_key():
+    import canonbot.checkers as c
+
+    payload = {"data": {"products": {"items": [
+        {"url_key": "refurbished-powershot-g7-x-mark-iii-black", "name": "Refurb", "stock_status": "IN_STOCK",
+         "price_range": {"minimum_price": {"final_price": {"value": 703.99, "currency": "USD"}}}},
+        {"url_key": "powershot-g7-x-mark-iii", "name": "G7X3", "stock_status": "IN_STOCK",
+         "price_range": {"minimum_price": {"final_price": {"value": 879.99, "currency": "USD"}}}},
+    ]}}}
+    orig = c.requests.post
+    c.requests.post = lambda *a, **k: _PostResp(200, payload)
+    try:
+        r = c.check_via_canon_graphql("https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii", 10)
+        # Must pick the exact url_key match, not the first (refurbished) item.
+        assert r.status == c.IN_STOCK
+        assert r.price == 879.99
+    finally:
+        c.requests.post = orig
+
+
+def test_canon_graphql_no_match_is_unknown():
+    import canonbot.checkers as c
+    payload = {"data": {"products": {"items": [
+        {"url_key": "some-other-camera", "stock_status": "IN_STOCK",
+         "price_range": {"minimum_price": {"final_price": {"value": 10, "currency": "USD"}}}},
+    ]}}}
+    orig = c.requests.post
+    c.requests.post = lambda *a, **k: _PostResp(200, payload)
+    try:
+        r = c.check_via_canon_graphql("https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii", 10)
+        assert r.status == c.UNKNOWN
+    finally:
+        c.requests.post = orig
+
+
+def test_target_api_in_stock_fetches_price():
+    import canonbot.checkers as c
+
+    def fake_get(url, **kwargs):
+        if "product_fulfillment" in url:
+            return _PostResp(200, {"data": {"product": {"fulfillment": {
+                "shipping_options": {"availability_status": "IN_STOCK"}}}}})
+        # pdp price call
+        return _PostResp(200, {"data": {"product": {"price": {"current_retail": 879.99}}}})
+
+    orig = c.requests.get
+    c.requests.get = fake_get
+    try:
+        r = c.check_via_target_api("https://www.target.com/p/x/-/A-91467769", 10)
+        assert r.status == c.IN_STOCK
+        assert r.price == 879.99
+    finally:
+        c.requests.get = orig
+
+
+def test_target_api_key_rotation_is_unknown():
+    import canonbot.checkers as c
+    orig = c.requests.get
+    c.requests.get = lambda url, **k: _PostResp(403, {})
+    try:
+        r = c.check_via_target_api("https://www.target.com/p/x/-/A-91467769", 10)
+        assert r.status == c.UNKNOWN
+        assert "rotated" in r.detail
+    finally:
+        c.requests.get = orig
+
+
 def test_price_parser():
     assert checkers._parse_price("$1,299.00") == 1299.00
     assert checkers._parse_price("879.99") == 879.99

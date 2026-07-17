@@ -1,10 +1,21 @@
 # Canonbot watch list. Committed so CI (GitHub Actions) and Render have it.
 # No secrets here — the Discord webhook and API keys live in .env / repo secrets.
-# See config.example.yaml for the full list of options and per-listing modes.
+# See config.example.yaml for every option.
 
 settings:
+  # Regular listings are checked about this often (seconds; min 30).
   poll_interval_seconds: 90
+  # Priority listings (priority: true below) are checked faster — for Canon and
+  # Target, the two you care most about.
+  priority_poll_interval_seconds: 45
   request_timeout_seconds: 20
+  # If a retailer blocks/times out, that one listing backs off exponentially up
+  # to this cap (seconds) instead of hammering the site. Others keep scanning.
+  max_backoff_seconds: 900
+  # Send a Discord "still watching" heartbeat this often (hours; 0 = off).
+  heartbeat_hours: 12
+  # If a listing can't get a clean read for this long, warn once on Discord.
+  degraded_alert_after_minutes: 60
   alert_above_max_price: false
   treat_unknown_as_out_of_stock: true
 
@@ -12,17 +23,18 @@ products:
   - name: "Canon PowerShot G7 X Mark III (Black)"
     max_price: 879.99
     urls:
-      - https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
-      - https://www.bestbuy.com/product/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/J7C86S93T6
-      - https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
-      # For reliable Best Buy checks, add a Best Buy Developer API key (repo
-      # secret BESTBUY_API_KEY) and put the numeric SKU here, e.g.:
-      #   - url: https://www.bestbuy.com/product/.../J7C86S93T6
-      #     sku: "6377340"   # the real SKU from the product page
-      #     mode: api
+      # Target — read via the public RedSky JSON API (fast, reliable, no browser).
+      - url: https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
+        priority: true
+      # Canon USA — read via Canon's Magento GraphQL backend (no browser needed).
+      - url: https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
+        priority: true
 
-  - name: "Canon PowerShot SX740 HS (Black)"
+  # Canon only sells the SX740 HS refurbished now, and it lists at ~$439.99 —
+  # above a $399.99 new-MSRP cap, so it won't alert until it drops. Raise
+  # max_price to ~449.99 if a refurb at Canon's price is acceptable to you.
+  - name: "Canon PowerShot SX740 HS (Refurbished, Black)"
     max_price: 399.99
     urls:
-      - https://www.bestbuy.com/product/canon-powershot-sx740-hs-20-3-megapixel-digital-camera-black/J7C86SSQCY
-      - https://www.walmart.com/ip/Canon-PowerShot-SX740-HS-4x-20-3-Megapixel-CMOS-Digital-Camera-New-Black/605041208
+      - url: https://www.usa.canon.com/shop/p/refurbished-powershot-sx740-hs-black
+        priority: true

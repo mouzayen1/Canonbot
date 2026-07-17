@@ -42,7 +42,11 @@ JS_HEAVY_HOSTS = {"target.com", "bestbuy.com"}
 @dataclass
 class Settings:
     poll_interval_seconds: int = 90
+    priority_poll_interval_seconds: int = 45
     request_timeout_seconds: int = 20
+    max_backoff_seconds: int = 900
+    heartbeat_hours: float = 12.0
+    degraded_alert_after_minutes: int = 60
     alert_above_max_price: bool = False
     treat_unknown_as_out_of_stock: bool = True
 
@@ -58,6 +62,7 @@ class ProductTarget:
     host: str  # bare host, e.g. "bestbuy.com"
     sku: str | None = None  # Best Buy numeric SKU, enables the API checker
     mode: str = "auto"
+    priority: bool = False  # poll at the faster priority interval
 
     @property
     def key(self) -> str:
@@ -71,6 +76,7 @@ class Config:
     webhook_url: str = ""
     mention: str = ""
     bestbuy_api_key: str = ""
+    target_api_key: str = ""
     discord_username: str = "Canonbot 📷"
     discord_avatar_url: str = ""
 
@@ -96,7 +102,16 @@ def load_config(path: str) -> Config:
             MIN_POLL_INTERVAL_SECONDS,
             int(settings_raw.get("poll_interval_seconds", 90)),
         ),
+        priority_poll_interval_seconds=max(
+            MIN_POLL_INTERVAL_SECONDS,
+            int(settings_raw.get("priority_poll_interval_seconds", 45)),
+        ),
         request_timeout_seconds=int(settings_raw.get("request_timeout_seconds", 20)),
+        max_backoff_seconds=int(settings_raw.get("max_backoff_seconds", 900)),
+        heartbeat_hours=float(settings_raw.get("heartbeat_hours", 12)),
+        degraded_alert_after_minutes=int(
+            settings_raw.get("degraded_alert_after_minutes", 60)
+        ),
         alert_above_max_price=bool(settings_raw.get("alert_above_max_price", False)),
         treat_unknown_as_out_of_stock=bool(
             settings_raw.get("treat_unknown_as_out_of_stock", True)
@@ -112,14 +127,15 @@ def load_config(path: str) -> Config:
             errors.append(f"Product entry missing 'name' or 'max_price': {product!r}")
             continue
         for entry in product.get("urls", []) or []:
-            # An entry can be a plain URL string, or a dict with url/sku/mode.
+            # An entry can be a plain URL string, or a dict with url/sku/mode/priority.
             if isinstance(entry, str):
-                url, sku, mode = entry, None, "auto"
+                url, sku, mode, priority = entry, None, "auto", False
             elif isinstance(entry, dict):
                 url = entry.get("url", "")
                 sku = entry.get("sku")
                 sku = str(sku) if sku is not None else None
                 mode = str(entry.get("mode", "auto")).lower()
+                priority = bool(entry.get("priority", False))
             else:
                 errors.append(f"Unrecognized listing entry: {entry!r}")
                 continue
@@ -150,6 +166,7 @@ def load_config(path: str) -> Config:
                     host=host,
                     sku=sku,
                     mode=mode,
+                    priority=priority,
                 )
             )
 
@@ -172,6 +189,7 @@ def load_config(path: str) -> Config:
         webhook_url=webhook_url,
         mention=os.environ.get("DISCORD_MENTION", "").strip(),
         bestbuy_api_key=os.environ.get("BESTBUY_API_KEY", "").strip(),
+        target_api_key=os.environ.get("TARGET_API_KEY", "").strip(),
         discord_username=os.environ.get("DISCORD_USERNAME", "Canonbot 📷").strip()
         or "Canonbot 📷",
         discord_avatar_url=os.environ.get("DISCORD_AVATAR_URL", "").strip(),

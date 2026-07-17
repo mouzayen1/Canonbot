@@ -170,6 +170,47 @@ class DiscordNotifier:
         }
         return self.send_discord(embed)
 
+    def send_heartbeat(self, num_listings: int, summary_lines: list[str]) -> bool:
+        embed = {
+            "title": "💓 Canonbot — still watching",
+            "description": (
+                f"Alive and monitoring **{num_listings}** listing(s).\n\n"
+                + "\n".join(summary_lines)
+            ),
+            "color": COLORS["info"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "footer": {"text": "Canonbot | periodic health check"},
+        }
+        return self.send_discord(embed)
+
+    def send_degraded(self, retailer: str, product_name: str, reason: str) -> bool:
+        embed = {
+            "title": f"⚠️ Canonbot — can't read {retailer}",
+            "description": (
+                f"I haven't gotten a clean stock read for **{product_name}** at "
+                f"**{retailer}** for a while.\n\n"
+                f"**Reason:** {reason}\n\n"
+                "Other listings are still being watched normally. If this is Target, "
+                "the public API key may have rotated — set `TARGET_API_KEY`. If it's "
+                "Canon, it may be blocking automated reads; the headless-browser "
+                "checker (Render worker) is the fallback."
+            ),
+            "color": COLORS["over_price"],  # orange = attention
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "footer": {"text": "Canonbot | monitoring degraded"},
+        }
+        return self.send_discord(embed)
+
+    def send_recovered(self, retailer: str, product_name: str) -> bool:
+        embed = {
+            "title": f"✅ Canonbot — {retailer} readable again",
+            "description": f"Stock reads for **{product_name}** at **{retailer}** have recovered.",
+            "color": COLORS["in_stock"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "footer": {"text": "Canonbot | monitoring restored"},
+        }
+        return self.send_discord(embed)
+
     def send_plain(self, message: str) -> bool:
         return self.send_discord(
             {"description": message, "color": COLORS["info"]},
