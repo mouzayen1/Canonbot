@@ -114,10 +114,42 @@ request (e.g. **Canon USA** sometimes returns HTTP 403). When that happens you'l
 see `unknown` in the logs and it's treated as out of stock — that's the bot
 failing safe, never a false "in stock!" ping.
 
+## Discord alert style
+
+Alerts are formatted to match the **Trend Radar 2.0** style: webhook posts with a
+custom `username`/`avatar`, rich embeds with an emoji title, bold section headers,
+bullet points, a divider, footer, and timestamp, color-coded green (at/below your
+price) or orange (over your cap). It also handles Discord's 429 rate limits with
+retry, sends an "ACTIVE" startup message when the worker boots, and paces
+back-to-back alerts — same behavior as Trend Radar. Set `DISCORD_USERNAME` /
+`DISCORD_AVATAR_URL` in `.env` to customize the look.
+
 ## Running 24/7
 
-Simplest option is a small always-on box (a $5 VPS, a Raspberry Pi, etc.) with a
-`systemd` service or a `tmux`/`screen` session:
+Three options, same deployment style as Trend Radar:
+
+### 1. Render worker (recommended — continuous, fastest reaction)
+
+`render.yaml` defines a Docker `worker` service. Commit your config first
+(it has no secrets), then deploy:
+
+```bash
+git add -f config.yaml && git commit -m "add watch config"
+# Push, then in Render: New -> Blueprint -> pick this repo.
+# Set DISCORD_WEBHOOK_URL (and BESTBUY_API_KEY etc.) in the dashboard.
+```
+
+State (`state.json`) persists on the worker disk, so a restart won't re-spam you.
+
+### 2. GitHub Actions cron (free, zero-maintenance)
+
+`.github/workflows/monitor.yml` runs `python run.py --once` every 5 minutes.
+Add your secrets under **Repo Settings → Secrets and variables → Actions**
+(`DISCORD_WEBHOOK_URL`, optionally `BESTBUY_API_KEY`, `DISCORD_MENTION`). State is
+carried between runs with `actions/cache`. Note: scheduled runs can be delayed
+under load, so this reacts a bit slower than the worker.
+
+### 3. Any always-on box (VPS, Raspberry Pi)
 
 ```bash
 # example systemd unit: /etc/systemd/system/canonbot.service
@@ -127,8 +159,11 @@ ExecStart=/opt/Canonbot/.venv/bin/python run.py
 Restart=always
 ```
 
-State is saved to `state.json`, so a restart won't re-spam you for items that
-were already in stock.
+Or run the Docker image directly:
+
+```bash
+docker build -t canonbot . && docker run -d --env-file .env canonbot
+```
 
 ## Testing
 

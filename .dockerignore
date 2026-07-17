@@ -1,0 +1,9 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.log
+state.json
+.env
+# NOTE: config.yaml is intentionally NOT ignored so it ships in the image.

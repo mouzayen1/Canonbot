@@ -1,0 +1,52 @@
+name: Canonbot Restock Check
+
+# Free alternative to the Render worker: runs a single sweep on a schedule.
+# GitHub's minimum cron interval is 5 minutes. Scheduled runs can be delayed
+# under load, so for the fastest reaction to restocks prefer the Render worker
+# (continuous). This path is great for a zero-cost, low-maintenance setup.
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes
+  workflow_dispatch:         # allow manual runs
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Uncomment to enable browser mode (Target) in Actions — adds ~1-2 min/run:
+      # - name: Install Chromium
+      #   run: playwright install --with-deps chromium
+
+      # Persist the out/in-stock state between scheduled runs so you aren't
+      # re-alerted every 5 minutes for an item that simply stays in stock.
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: canonbot-state-${{ github.run_id }}
+          restore-keys: canonbot-state-
+
+      - name: Run one restock sweep
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
+          BESTBUY_API_KEY: ${{ secrets.BESTBUY_API_KEY }}
+        run: python run.py --once
+        timeout-minutes: 5
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: canonbot-state-${{ github.run_id }}

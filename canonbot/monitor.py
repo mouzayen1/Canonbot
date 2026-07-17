@@ -23,7 +23,12 @@ class Monitor:
     def __init__(self, config: Config):
         self.config = config
         self.session = checkers.new_session()
-        self.notifier = DiscordNotifier(config.webhook_url, config.mention)
+        self.notifier = DiscordNotifier(
+            config.webhook_url,
+            config.mention,
+            username=config.discord_username,
+            avatar_url=config.discord_avatar_url,
+        )
         # Maps target.key -> last known status string ("in_stock"/"out_of_stock").
         self.last_status: dict[str, str] = self._load_state()
         self._running = True
@@ -124,6 +129,13 @@ class Monitor:
             len(self.config.targets),
             settings.poll_interval_seconds,
         )
+        # Announce active mode on Discord, like Trend Radar's startup message.
+        try:
+            self.notifier.send_startup(
+                len(self.config.targets), settings.poll_interval_seconds
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Could not send startup message: %s", exc)
         while self._running:
             self._sweep()
             if not self._running:

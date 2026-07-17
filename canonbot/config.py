@@ -71,6 +71,8 @@ class Config:
     webhook_url: str = ""
     mention: str = ""
     bestbuy_api_key: str = ""
+    discord_username: str = "Canonbot 📷"
+    discord_avatar_url: str = ""
 
 
 def _retailer_for_url(url: str) -> tuple[str, str] | None:
@@ -170,4 +172,7 @@ def load_config(path: str) -> Config:
         webhook_url=webhook_url,
         mention=os.environ.get("DISCORD_MENTION", "").strip(),
         bestbuy_api_key=os.environ.get("BESTBUY_API_KEY", "").strip(),
+        discord_username=os.environ.get("DISCORD_USERNAME", "Canonbot 📷").strip()
+        or "Canonbot 📷",
+        discord_avatar_url=os.environ.get("DISCORD_AVATAR_URL", "").strip(),
     )
