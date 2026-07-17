@@ -5,6 +5,8 @@ Usage:
   python run.py                 # start monitoring (uses config.yaml + .env)
   python run.py --config x.yaml # use a different config file
   python run.py --once          # run a single sweep and exit (good for testing)
+  python run.py --minutes 50    # scan continuously for 50 min then exit (CI burst)
+  python run.py --no-startup    # skip the Discord "ACTIVE" message
   python run.py --test-webhook  # send a test message to Discord and exit
 """
 
@@ -13,6 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 
 from dotenv import load_dotenv
 
@@ -25,6 +28,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Canonbot restock monitor")
     parser.add_argument("--config", default="config.yaml", help="Path to config YAML")
     parser.add_argument("--once", action="store_true", help="Run one sweep and exit")
+    parser.add_argument(
+        "--minutes", type=float, default=0.0,
+        help="Scan continuously for N minutes then exit (0 = run forever)",
+    )
+    parser.add_argument(
+        "--no-startup", action="store_true",
+        help="Skip the Discord 'ACTIVE' startup message (use for scheduled bursts)",
+    )
     parser.add_argument(
         "--test-webhook", action="store_true", help="Send a Discord test message and exit"
     )
@@ -77,7 +88,16 @@ def main() -> int:
         monitor._sweep()  # noqa: SLF001 - intentional single sweep for testing
         return 0
 
-    monitor.run()
+    # Bounded run (CI burst): stop cleanly after N minutes.
+    if args.minutes and args.minutes > 0:
+        timer = threading.Timer(args.minutes * 60.0, monitor.stop)
+        timer.daemon = True
+        timer.start()
+        logging.getLogger("canonbot").info(
+            "Burst mode: scanning for ~%.0f minutes then exiting.", args.minutes
+        )
+
+    monitor.run(announce=not args.no_startup)
     return 0
 
 

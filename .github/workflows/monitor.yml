@@ -1,17 +1,26 @@
-name: Canonbot Restock Check
+name: Canonbot Restock Scan
 
-# Free alternative to the Render worker: runs a single sweep on a schedule.
-# GitHub's minimum cron interval is 5 minutes. Scheduled runs can be delayed
-# under load, so for the fastest reaction to restocks prefer the Render worker
-# (continuous). This path is great for a zero-cost, low-maintenance setup.
+# Free 24/7-ish scanning on GitHub Actions (this repo is public, so Actions
+# minutes are unlimited). Instead of one quick check, each run scans
+# CONTINUOUSLY for ~50 minutes (Canon + Target every ~45s), then the next hour's
+# run picks up — near-continuous coverage at $0, no server needed.
+#
+# GitHub throttles scheduled runs and enforces a 5-min minimum, so coverage
+# isn't perfectly gapless, but it's far tighter than a single check per run.
 on:
   schedule:
-    - cron: '*/5 * * * *'   # every 5 minutes
-  workflow_dispatch:         # allow manual runs
+    - cron: '2 * * * *'    # hourly; each run scans for ~50 minutes
+  workflow_dispatch:         # lets you start a burst manually from the Actions tab
+
+# Never run two bursts at once (avoids double alerts if a run starts late).
+concurrency:
+  group: canonbot-scan
+  cancel-in-progress: false
 
 jobs:
-  check:
+  scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +32,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Uncomment to enable browser mode (Target) in Actions — adds ~1-2 min/run:
-      # - name: Install Chromium
-      #   run: playwright install --with-deps chromium
-
-      # Persist the out/in-stock state between scheduled runs so you aren't
-      # re-alerted every 5 minutes for an item that simply stays in stock.
+      # Remember what was in/out of stock across runs so you aren't re-alerted
+      # for an item that simply stays in stock.
       - name: Restore state
         uses: actions/cache/restore@v4
         with:
@@ -36,13 +41,13 @@ jobs:
           key: canonbot-state-${{ github.run_id }}
           restore-keys: canonbot-state-
 
-      - name: Run one restock sweep
+      - name: Scan continuously (~50 min)
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
           BESTBUY_API_KEY: ${{ secrets.BESTBUY_API_KEY }}
-        run: python run.py --once
-        timeout-minutes: 5
+          TARGET_API_KEY: ${{ secrets.TARGET_API_KEY }}
+        run: python run.py --minutes 50 --no-startup
 
       - name: Save state
         if: always()

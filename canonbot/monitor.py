@@ -218,7 +218,7 @@ class Monitor:
         except Exception as exc:  # noqa: BLE001
             log.error("Failed to send %s notice: %s", label, exc)
 
-    def run(self) -> None:
+    def run(self, announce: bool = True) -> None:
         settings = self.config.settings
         listings = [
             _Listing(
@@ -243,12 +243,13 @@ class Monitor:
             len(listings), n_priority,
             settings.priority_poll_interval_seconds, settings.poll_interval_seconds,
         )
-        self._safe_notify(
-            lambda: self.notifier.send_startup(
-                len(listings), settings.priority_poll_interval_seconds
-            ),
-            "startup",
-        )
+        if announce:
+            self._safe_notify(
+                lambda: self.notifier.send_startup(
+                    len(listings), settings.priority_poll_interval_seconds
+                ),
+                "startup",
+            )
 
         last_heartbeat = time.monotonic()
         while self._running:
