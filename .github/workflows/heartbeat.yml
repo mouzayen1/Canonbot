@@ -1,0 +1,31 @@
+name: Canonbot Daily Heartbeat
+
+# Posts one "still watching" summary to Discord each day so you know the scanner
+# is alive, without the per-run spam. Reads the latest saved state so it can show
+# each listing's last-known status.
+on:
+  schedule:
+    - cron: '0 15 * * *'    # once a day (~15:00 UTC / ~10am ET)
+  workflow_dispatch:
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore latest state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: canonbot-heartbeat-${{ github.run_id }}
+          restore-keys: canonbot-state-
+      - name: Send heartbeat
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python run.py --heartbeat

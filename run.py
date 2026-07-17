@@ -39,6 +39,10 @@ def main() -> int:
     parser.add_argument(
         "--test-webhook", action="store_true", help="Send a Discord test message and exit"
     )
+    parser.add_argument(
+        "--heartbeat", action="store_true",
+        help="Send one 'still watching' Discord summary and exit (for a daily cron)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Debug logging")
     args = parser.parse_args()
 
@@ -83,6 +87,16 @@ def main() -> int:
 
     monitor = Monitor(config)
     install_signal_handlers(monitor)
+
+    if args.heartbeat:
+        lines = []
+        for t in config.targets:
+            status = monitor.last_status.get(t.key, "unknown")
+            flag = "🚨" if status == "in_stock" else "•"
+            lines.append(f"{flag} {t.retailer}: {t.product_name[:32]} — {status}")
+        monitor.notifier.send_heartbeat(len(config.targets), lines)
+        print("Heartbeat sent.")
+        return 0
 
     if args.once:
         monitor._sweep()  # noqa: SLF001 - intentional single sweep for testing

@@ -1,15 +1,15 @@
 name: Canonbot Restock Scan
 
 # Free 24/7-ish scanning on GitHub Actions (this repo is public, so Actions
-# minutes are unlimited). Instead of one quick check, each run scans
-# CONTINUOUSLY for ~50 minutes (Canon + Target every ~45s), then the next hour's
-# run picks up — near-continuous coverage at $0, no server needed.
+# minutes are unlimited). Each run scans CONTINUOUSLY for ~115 minutes (Canon +
+# Target every ~30s), and a new run starts every 2 hours — so coverage is
+# near-continuous (~5 min gap) at $0, no server needed.
 #
-# GitHub throttles scheduled runs and enforces a 5-min minimum, so coverage
-# isn't perfectly gapless, but it's far tighter than a single check per run.
+# GitHub can delay scheduled runs under load, so it isn't perfectly gapless.
+# For zero gaps (to catch ~1-minute restocks), run it on an always-on machine.
 on:
   schedule:
-    - cron: '2 * * * *'    # hourly; each run scans for ~50 minutes
+    - cron: '5 */2 * * *'   # every 2 hours; each run scans ~115 min (≈5 min gap)
   workflow_dispatch:         # lets you start a burst manually from the Actions tab
 
 # Never run two bursts at once (avoids double alerts if a run starts late).
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 118
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +47,7 @@ jobs:
           DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
           BESTBUY_API_KEY: ${{ secrets.BESTBUY_API_KEY }}
           TARGET_API_KEY: ${{ secrets.TARGET_API_KEY }}
-        run: python run.py --minutes 50 --no-startup
+        run: python run.py --minutes 115 --no-startup
 
       - name: Save state
         if: always()

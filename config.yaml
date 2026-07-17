@@ -3,18 +3,13 @@
 # See config.example.yaml for every option.
 
 settings:
-  # Regular listings are checked about this often (seconds; min 30).
   poll_interval_seconds: 90
-  # Priority listings (priority: true below) are checked faster — for Canon and
-  # Target, the two you care most about.
-  priority_poll_interval_seconds: 45
+  # Priority listings (Canon + Target) are checked this often. 30s is the floor —
+  # fast enough to catch short restock windows without hammering the APIs.
+  priority_poll_interval_seconds: 30
   request_timeout_seconds: 20
-  # If a retailer blocks/times out, that one listing backs off exponentially up
-  # to this cap (seconds) instead of hammering the site. Others keep scanning.
   max_backoff_seconds: 900
-  # Send a Discord "still watching" heartbeat this often (hours; 0 = off).
   heartbeat_hours: 12
-  # If a listing can't get a clean read for this long, warn once on Discord.
   degraded_alert_after_minutes: 60
   alert_above_max_price: false
   treat_unknown_as_out_of_stock: true
@@ -23,18 +18,18 @@ products:
   - name: "Canon PowerShot G7 X Mark III (Black)"
     max_price: 879.99
     urls:
-      # Target — read via the public RedSky JSON API (fast, reliable, no browser).
       - url: https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
         priority: true
-      # Canon USA — read via Canon's Magento GraphQL backend (no browser needed).
       - url: https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
         priority: true
 
-  # Canon only sells the SX740 HS refurbished now, and it lists at ~$439.99 —
-  # above a $399.99 new-MSRP cap, so it won't alert until it drops. Raise
-  # max_price to ~449.99 if a refurb at Canon's price is acceptable to you.
-  - name: "Canon PowerShot SX740 HS (Refurbished, Black)"
-    max_price: 399.99
+  # Canon's NEW SX740 HS now lists at ~$549.99 (above the old $399.99 MSRP), and
+  # the refurbished one at ~$439.99. Cap is set to $549.99 so you get alerted on
+  # either — lower max_price if you only want to hear about it under a set price.
+  - name: "Canon PowerShot SX740 HS (Black)"
+    max_price: 549.99
     urls:
+      - url: https://www.usa.canon.com/shop/p/powershot-sx740-hs
+        priority: true
       - url: https://www.usa.canon.com/shop/p/refurbished-powershot-sx740-hs-black
         priority: true
