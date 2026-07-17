@@ -1,6 +1,8 @@
-# Secrets / local config
+# Secrets (never commit these)
 .env
-config.yaml
+
+# NOTE: config.yaml IS committed so CI / Render have your watch list.
+# It contains no secrets — those live in .env / repo secrets.
 
 # Runtime state
 state.json

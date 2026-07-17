@@ -38,8 +38,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Create your config from the examples
-cp config.example.yaml config.yaml
+# 2. config.yaml already ships with the two cameras — edit it to taste.
+#    Create your secrets file:
 cp .env.example .env
 
 # 3. Get a Discord webhook URL:
@@ -130,24 +130,32 @@ Three options, same deployment style as Trend Radar:
 
 ### 1. Render worker (recommended — continuous, fastest reaction)
 
-`render.yaml` defines a Docker `worker` service. Commit your config first
-(it has no secrets), then deploy:
+`render.yaml` defines a Docker `worker` service. `config.yaml` is already in the
+repo, so just deploy:
 
 ```bash
-git add -f config.yaml && git commit -m "add watch config"
-# Push, then in Render: New -> Blueprint -> pick this repo.
+# In Render: New -> Blueprint -> pick this repo.
 # Set DISCORD_WEBHOOK_URL (and BESTBUY_API_KEY etc.) in the dashboard.
 ```
 
 State (`state.json`) persists on the worker disk, so a restart won't re-spam you.
+The Docker image includes Chromium, so browser mode (Target) works here — this is
+the most reliable option for all retailers.
 
 ### 2. GitHub Actions cron (free, zero-maintenance)
 
 `.github/workflows/monitor.yml` runs `python run.py --once` every 5 minutes.
 Add your secrets under **Repo Settings → Secrets and variables → Actions**
-(`DISCORD_WEBHOOK_URL`, optionally `BESTBUY_API_KEY`, `DISCORD_MENTION`). State is
-carried between runs with `actions/cache`. Note: scheduled runs can be delayed
-under load, so this reacts a bit slower than the worker.
+(`DISCORD_WEBHOOK_URL` is **required**, plus optionally `BESTBUY_API_KEY`,
+`DISCORD_MENTION`). State is carried between runs with `actions/cache`.
+
+**Reliability note:** the free Actions runner has no browser and no Best Buy key
+by default, so Target (needs a browser) and Best Buy (blocks plain requests) will
+report `unknown` and won't alert. To make this path genuinely useful, **add a
+`BESTBUY_API_KEY` secret** and give your Best Buy listings a `sku` + `mode: api`
+in `config.yaml` — that checks Best Buy reliably with no browser. For full
+coverage of every retailer (incl. Target), use the **Render worker** above.
+Scheduled runs can also be delayed under load, so this reacts a bit slower.
 
 ### 3. Any always-on box (VPS, Raspberry Pi)
 

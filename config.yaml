@@ -1,0 +1,28 @@
+# Canonbot watch list. Committed so CI (GitHub Actions) and Render have it.
+# No secrets here — the Discord webhook and API keys live in .env / repo secrets.
+# See config.example.yaml for the full list of options and per-listing modes.
+
+settings:
+  poll_interval_seconds: 90
+  request_timeout_seconds: 20
+  alert_above_max_price: false
+  treat_unknown_as_out_of_stock: true
+
+products:
+  - name: "Canon PowerShot G7 X Mark III (Black)"
+    max_price: 879.99
+    urls:
+      - https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
+      - https://www.bestbuy.com/product/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/J7C86S93T6
+      - https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
+      # For reliable Best Buy checks, add a Best Buy Developer API key (repo
+      # secret BESTBUY_API_KEY) and put the numeric SKU here, e.g.:
+      #   - url: https://www.bestbuy.com/product/.../J7C86S93T6
+      #     sku: "6377340"   # the real SKU from the product page
+      #     mode: api
+
+  - name: "Canon PowerShot SX740 HS (Black)"
+    max_price: 399.99
+    urls:
+      - https://www.bestbuy.com/product/canon-powershot-sx740-hs-20-3-megapixel-digital-camera-black/J7C86SSQCY
+      - https://www.walmart.com/ip/Canon-PowerShot-SX740-HS-4x-20-3-Megapixel-CMOS-Digital-Camera-New-Black/605041208

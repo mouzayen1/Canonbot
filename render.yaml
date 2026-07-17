@@ -1,9 +1,8 @@
 # Deploy Canonbot as an always-on Render worker (same style as Trend Radar).
 # The worker runs run.py continuously; state.json persists on the worker disk
 # so you won't get re-alerted for an item that stays in stock.
-#
-# Note: commit your config.yaml before deploying (it has no secrets):
-#   git add -f config.yaml && git commit -m "add watch config"
+# config.yaml is committed to the repo, so the worker has your watch list.
+# Set DISCORD_WEBHOOK_URL (and optionally BESTBUY_API_KEY) in the dashboard.
 services:
   - type: worker
     name: canonbot

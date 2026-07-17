@@ -41,15 +41,25 @@ def main() -> int:
 
     try:
         config = load_config(args.config)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"Configuration error: {exc}", file=sys.stderr)
+    except FileNotFoundError:
         print(
-            "\nFirst run? Copy the examples:\n"
-            "  cp config.example.yaml config.yaml\n"
-            "  cp .env.example .env\n"
-            "then edit both.",
+            f"Config file not found: {args.config}\n"
+            "  Locally:  cp config.example.yaml config.yaml  (then edit it)\n"
+            "  In CI:    config.yaml must be committed to the repo.",
             file=sys.stderr,
         )
+        return 1
+    except ValueError as exc:
+        msg = str(exc)
+        print(f"Configuration error: {msg}", file=sys.stderr)
+        if "DISCORD_WEBHOOK_URL" in msg:
+            print(
+                "\nSet your Discord webhook:\n"
+                "  Locally:  put DISCORD_WEBHOOK_URL in a .env file\n"
+                "  In CI:    add it under Repo Settings -> Secrets and variables"
+                " -> Actions -> New repository secret.",
+                file=sys.stderr,
+            )
         return 1
 
     if args.test_webhook:
