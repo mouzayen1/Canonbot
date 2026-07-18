@@ -18,8 +18,14 @@ products:
   - name: "Canon PowerShot G7 X Mark III (Black)"
     max_price: 879.99
     urls:
+      # Target's stock API CAPTCHA-blocks frequent automated polling (especially
+      # from cloud IPs), so it's best-effort: polled gently, and it won't spam
+      # "can't read Target" warnings when it's blocked. For reliable Target
+      # alerts, a free third-party like hotstock.io is the pragmatic route.
       - url: https://www.target.com/p/canon-powershot-g7-x-mark-iii-20-1-megapixel-digital-camera-black/-/A-91467769
-        priority: true
+        interval_seconds: 300
+        best_effort: true
+      # Canon is rock-solid (its GraphQL backend doesn't block) — poll it fast.
       - url: https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
         priority: true
 

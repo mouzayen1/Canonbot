@@ -197,6 +197,10 @@ class Monitor:
 
     def _maybe_degraded(self, ls: _Listing, now: float, result: StockResult) -> None:
         """Warn once (per outage) if a listing has been unreadable too long."""
+        # Best-effort listings (e.g. Target, which CAPTCHA-blocks polling) are
+        # expected to fail sometimes — stay quiet instead of nagging.
+        if ls.target.best_effort:
+            return
         threshold = self.config.settings.degraded_alert_after_minutes * 60
         stale_for = now - ls.last_success_at
         if stale_for > threshold and not ls.degraded_notified:
@@ -224,7 +228,9 @@ class Monitor:
             _Listing(
                 target=t,
                 base_interval=(
-                    settings.priority_poll_interval_seconds
+                    t.interval_seconds
+                    if t.interval_seconds is not None
+                    else settings.priority_poll_interval_seconds
                     if t.priority
                     else settings.poll_interval_seconds
                 ),

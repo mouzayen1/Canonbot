@@ -190,10 +190,11 @@ class DiscordNotifier:
                 f"I haven't gotten a clean stock read for **{product_name}** at "
                 f"**{retailer}** for a while.\n\n"
                 f"**Reason:** {reason}\n\n"
-                "Other listings are still being watched normally. If this is Target, "
-                "the public API key may have rotated — set `TARGET_API_KEY`. If it's "
-                "Canon, it may be blocking automated reads; the headless-browser "
-                "checker (Render worker) is the fallback."
+                "Other listings are still being watched normally. If this is Canon, "
+                "it may be a temporary backend hiccup and should recover on its own. "
+                "If it's Target, its stock API may be rate-limiting/CAPTCHA-blocking "
+                "automated reads — that listing is best watched via a third-party "
+                "alert service."
             ),
             "color": COLORS["over_price"],  # orange = attention
             "timestamp": datetime.now(timezone.utc).isoformat(),

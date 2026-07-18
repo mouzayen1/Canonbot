@@ -63,6 +63,8 @@ class ProductTarget:
     sku: str | None = None  # Best Buy numeric SKU, enables the API checker
     mode: str = "auto"
     priority: bool = False  # poll at the faster priority interval
+    interval_seconds: float | None = None  # explicit per-listing poll interval
+    best_effort: bool = False  # gentle: no degraded alerts when it can't be read
 
     @property
     def key(self) -> str:
@@ -130,12 +132,19 @@ def load_config(path: str) -> Config:
             # An entry can be a plain URL string, or a dict with url/sku/mode/priority.
             if isinstance(entry, str):
                 url, sku, mode, priority = entry, None, "auto", False
+                interval_seconds, best_effort = None, False
             elif isinstance(entry, dict):
                 url = entry.get("url", "")
                 sku = entry.get("sku")
                 sku = str(sku) if sku is not None else None
                 mode = str(entry.get("mode", "auto")).lower()
                 priority = bool(entry.get("priority", False))
+                interval_seconds = entry.get("interval_seconds")
+                if interval_seconds is not None:
+                    interval_seconds = max(
+                        MIN_POLL_INTERVAL_SECONDS, float(interval_seconds)
+                    )
+                best_effort = bool(entry.get("best_effort", False))
             else:
                 errors.append(f"Unrecognized listing entry: {entry!r}")
                 continue
@@ -167,6 +176,8 @@ def load_config(path: str) -> Config:
                     sku=sku,
                     mode=mode,
                     priority=priority,
+                    interval_seconds=interval_seconds,
+                    best_effort=best_effort,
                 )
             )
 
