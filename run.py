@@ -89,13 +89,19 @@ def main() -> int:
     install_signal_handlers(monitor)
 
     if args.heartbeat:
+        from canonbot import checkers
+
         lines = []
         for t in config.targets:
-            status = monitor.last_status.get(t.key, "unknown")
-            flag = "🚨" if status == "in_stock" else "•"
-            lines.append(f"{flag} {t.retailer}: {t.product_name[:32]} — {status}")
+            r = checkers.check_target(
+                monitor.session, t, config.settings.request_timeout_seconds,
+                config.bestbuy_api_key, config.target_api_key,
+            )
+            flag = "🚨" if r.status == checkers.IN_STOCK else "•"
+            price = f" (${r.price:,.2f})" if r.price else ""
+            lines.append(f"{flag} {t.retailer}: {t.product_name[:32]} — {r.status}{price}")
         monitor.notifier.send_heartbeat(len(config.targets), lines)
-        print("Heartbeat sent.")
+        print("Heartbeat sent (live status).")
         return 0
 
     if args.once:
