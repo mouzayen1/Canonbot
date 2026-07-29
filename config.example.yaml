@@ -31,6 +31,15 @@ settings:
   # (e.g. Target key rotated, or Canon backend down) — so silent failure is visible.
   degraded_alert_after_minutes: 60
 
+  # False-positive guard. Some retailer backends briefly report IN_STOCK for an
+  # item that isn't actually buyable (Canon's refurb SKUs flap like this). Before
+  # alerting, require this many extra confirming reads that ALL agree it's in
+  # stock; set to 0 to alert on the first read (noisier).
+  confirm_reads: 3
+  confirm_delay_seconds: 1.5
+  # Never alert the same listing more than once within this many minutes.
+  alert_cooldown_minutes: 20
+
   # If true, you also get an alert when an item is in stock but ABOVE your
   # max_price (clearly flagged). If false (default), you only hear about it at
   # your price or better.

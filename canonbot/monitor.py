@@ -55,6 +55,8 @@ class Monitor:
         )
         # Maps target.key -> last known status string ("in_stock"/"out_of_stock").
         self.last_status: dict[str, str] = self._load_state()
+        # Maps target.key -> monotonic time of the last alert (for cooldown).
+        self.last_alert_at: dict[str, float] = {}
         self._running = True
 
     # --- state persistence so a restart doesn't re-spam you ---------------
@@ -115,6 +117,17 @@ class Monitor:
             )
             return
 
+        # Cooldown: never alert the same listing twice within the window.
+        now = time.monotonic()
+        cooldown = settings.alert_cooldown_minutes * 60
+        last = self.last_alert_at.get(target.key)
+        if last is not None and now - last < cooldown:
+            log.info(
+                "In stock but alerted %.0f min ago — within cooldown, skipping.",
+                (now - last) / 60,
+            )
+            return
+
         try:
             self.notifier.send_restock(
                 product_name=target.product_name,
@@ -125,6 +138,7 @@ class Monitor:
                 currency=result.currency,
                 within_budget=within_budget,
             )
+            self.last_alert_at[target.key] = now
             log.info("Discord alert sent for %s @ %s", target.product_name, target.retailer)
         except Exception as exc:  # noqa: BLE001 - never let a webhook error kill the loop
             log.error("Failed to send Discord alert: %s", exc)
@@ -148,15 +162,50 @@ class Monitor:
         self._save_state()
 
     # --- per-listing check + scheduling -----------------------------------
-    def _check_listing(self, ls: _Listing) -> StockResult:
-        """Run one check for a listing and route it through the alert logic."""
-        result = checkers.check_target(
+    def _check_once(self, target: ProductTarget) -> StockResult:
+        return checkers.check_target(
             self.session,
-            ls.target,
+            target,
             self.config.settings.request_timeout_seconds,
             self.config.bestbuy_api_key,
             self.config.target_api_key,
         )
+
+    def _confirm_in_stock(self, target: ProductTarget, first: StockResult) -> StockResult:
+        """A single IN_STOCK read can be backend noise (a retailer server briefly
+        reporting stock for an unbuyable item). Require several extra reads that
+        ALL agree before believing it; otherwise treat it as out of stock."""
+        settings = self.config.settings
+        n = settings.confirm_reads
+        if n <= 0:
+            return first
+        confirmed = first
+        for i in range(n):
+            self._interruptible_sleep(settings.confirm_delay_seconds)
+            if not self._running:
+                break
+            r = self._check_once(target)
+            if r.status != checkers.IN_STOCK:
+                log.info(
+                    "%s @ %s said IN_STOCK but confirm %d/%d was %s — filtered as noise.",
+                    target.product_name[:30], target.retailer, i + 1, n, r.status,
+                )
+                return StockResult(
+                    checkers.OUT_OF_STOCK, first.price, first.currency,
+                    f"unconfirmed in_stock (flapped on check {i + 1}/{n})", first.http_status,
+                )
+            confirmed = r  # keep the freshest price
+        log.info(
+            "%s @ %s IN_STOCK confirmed by %d extra reads.",
+            target.product_name[:30], target.retailer, n,
+        )
+        return confirmed
+
+    def _check_listing(self, ls: _Listing) -> StockResult:
+        """Run one check for a listing and route it through the alert logic."""
+        result = self._check_once(ls.target)
+        if result.status == checkers.IN_STOCK:
+            result = self._confirm_in_stock(ls.target, result)
         self._handle_result(ls.target, result)
         return result
 
