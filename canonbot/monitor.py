@@ -15,6 +15,7 @@ import os
 import random
 import signal
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import checkers
@@ -173,33 +174,29 @@ class Monitor:
 
     def _confirm_in_stock(self, target: ProductTarget, first: StockResult) -> StockResult:
         """A single IN_STOCK read can be backend noise (a retailer server briefly
-        reporting stock for an unbuyable item). Require several extra reads that
-        ALL agree before believing it; otherwise treat it as out of stock."""
-        settings = self.config.settings
-        n = settings.confirm_reads
+        reporting stock for an unbuyable item). Fire the confirming reads IN
+        PARALLEL and alert only if they ALL agree — so this adds ~1 round-trip,
+        not N, and doesn't slow detection."""
+        n = self.config.settings.confirm_reads
         if n <= 0:
             return first
-        confirmed = first
-        for i in range(n):
-            self._interruptible_sleep(settings.confirm_delay_seconds)
-            if not self._running:
-                break
-            r = self._check_once(target)
-            if r.status != checkers.IN_STOCK:
-                log.info(
-                    "%s @ %s said IN_STOCK but confirm %d/%d was %s — filtered as noise.",
-                    target.product_name[:30], target.retailer, i + 1, n, r.status,
-                )
-                return StockResult(
-                    checkers.OUT_OF_STOCK, first.price, first.currency,
-                    f"unconfirmed in_stock (flapped on check {i + 1}/{n})", first.http_status,
-                )
-            confirmed = r  # keep the freshest price
+        with ThreadPoolExecutor(max_workers=n) as ex:
+            results = list(ex.map(lambda _: self._check_once(target), range(n)))
+        agree = [r for r in results if r.status == checkers.IN_STOCK]
+        if len(agree) == n:
+            log.info(
+                "%s @ %s IN_STOCK confirmed by %d parallel reads.",
+                target.product_name[:30], target.retailer, n,
+            )
+            return agree[-1]  # freshest price
         log.info(
-            "%s @ %s IN_STOCK confirmed by %d extra reads.",
-            target.product_name[:30], target.retailer, n,
+            "%s @ %s said IN_STOCK but only %d/%d confirms agreed — filtered as noise.",
+            target.product_name[:30], target.retailer, len(agree), n,
         )
-        return confirmed
+        return StockResult(
+            checkers.OUT_OF_STOCK, first.price, first.currency,
+            f"unconfirmed in_stock ({len(agree)}/{n} agreed)", first.http_status,
+        )
 
     def _check_listing(self, ls: _Listing) -> StockResult:
         """Run one check for a listing and route it through the alert logic."""

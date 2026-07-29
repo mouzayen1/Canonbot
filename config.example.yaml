@@ -32,11 +32,11 @@ settings:
   degraded_alert_after_minutes: 60
 
   # False-positive guard. Some retailer backends briefly report IN_STOCK for an
-  # item that isn't actually buyable (Canon's refurb SKUs flap like this). Before
-  # alerting, require this many extra confirming reads that ALL agree it's in
-  # stock; set to 0 to alert on the first read (noisier).
-  confirm_reads: 3
-  confirm_delay_seconds: 1.5
+  # item that isn't actually buyable (Canon's refurb SKUs flap like this). On an
+  # in-stock read, fire this many confirming reads IN PARALLEL and alert only if
+  # they ALL agree (~1s added, detection speed unaffected). 0 = alert on the
+  # first read (fastest, but you'll get the flap noise).
+  confirm_reads: 2
   # Never alert the same listing more than once within this many minutes.
   alert_cooldown_minutes: 20
 

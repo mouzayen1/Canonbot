@@ -49,9 +49,10 @@ class Settings:
     degraded_alert_after_minutes: int = 60
     # False-positive guard: a single "in stock" read can be backend noise (some
     # retailer servers briefly report IN_STOCK for an item that isn't buyable).
-    # Require this many extra confirming reads, all in stock, before alerting.
-    confirm_reads: int = 3
-    confirm_delay_seconds: float = 1.5
+    # On an in-stock read, fire this many confirming reads IN PARALLEL; alert only
+    # if they ALL agree. Parallel => ~1 round-trip (~1s) added, not N. Detection
+    # speed is unaffected. Set to 0 to alert on the first read (fastest, noisier).
+    confirm_reads: int = 2
     # Don't alert the same listing more than once within this window.
     alert_cooldown_minutes: int = 20
     alert_above_max_price: bool = False
@@ -121,8 +122,7 @@ def load_config(path: str) -> Config:
         degraded_alert_after_minutes=int(
             settings_raw.get("degraded_alert_after_minutes", 60)
         ),
-        confirm_reads=max(0, int(settings_raw.get("confirm_reads", 3))),
-        confirm_delay_seconds=float(settings_raw.get("confirm_delay_seconds", 1.5)),
+        confirm_reads=max(0, int(settings_raw.get("confirm_reads", 2))),
         alert_cooldown_minutes=int(settings_raw.get("alert_cooldown_minutes", 20)),
         alert_above_max_price=bool(settings_raw.get("alert_above_max_price", False)),
         treat_unknown_as_out_of_stock=bool(
