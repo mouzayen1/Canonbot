@@ -29,6 +29,16 @@ products:
       - url: https://www.usa.canon.com/shop/p/powershot-g7-x-mark-iii
         priority: true
 
+  # The REFURBISHED G7 X III (~$703.99) restocks at Canon separately from the new
+  # one — and it's the variant that's actually been dropping. Canonbot wasn't
+  # watching it before; now it is. (This is a normal catalog SKU, the same kind
+  # Canonbot already catches reliably.)
+  - name: "Canon PowerShot G7 X Mark III (Refurbished, Black)"
+    max_price: 749.99
+    urls:
+      - url: https://www.usa.canon.com/shop/p/refurbished-powershot-g7-x-mark-iii-black
+        priority: true
+
   # Canon's NEW SX740 HS now lists at ~$549.99 (above the old $399.99 MSRP), and
   # the refurbished one at ~$439.99. Cap is set to $549.99 so you get alerted on
   # either — lower max_price if you only want to hear about it under a set price.
